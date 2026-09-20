@@ -5,6 +5,7 @@ import { getJSON, postJSON } from '../api'
 const items = ref([])
 const stations = ref([])
 const pick = ref({})
+const preview = ref({})
 const error = ref('')
 const busy = ref(false)
 
@@ -17,6 +18,18 @@ onMounted(async () => {
 const pathOf = (h) => (h.result && h.result.path ? h.result.path.join(' → ') : '—')
 const refOf = (h) => (h.input && h.input.reroute_of) || (h.result && h.result.reroute_of) || null
 
+const trial = async (h) => {
+  const end = pick.value[h.id]
+  const next = { ...preview.value }
+  if (!end) { delete next[h.id]; preview.value = next; return }
+  try {
+    next[h.id] = await postJSON('/api/quote', { start: h.input.start, end, persist: false })
+  } catch (e) {
+    next[h.id] = { reachable: false }
+  }
+  preview.value = next
+}
+
 const reroute = async (h) => {
   error.value = ''
   const end = pick.value[h.id]
@@ -24,6 +37,10 @@ const reroute = async (h) => {
   busy.value = true
   try {
     await postJSON(`/api/quote/${h.id}/reroute`, { end })
+    const next = { ...preview.value }
+    delete next[h.id]
+    preview.value = next
+    pick.value = { ...pick.value, [h.id]: '' }
     await load()
   } catch (e) {
     error.value = `记录 #${h.id} 改终点失败：${e.message}`
@@ -51,11 +68,17 @@ const reroute = async (h) => {
         </td>
         <td>
           <template v-if="h.result && h.result.reachable">
-            <select v-model="pick[h.id]">
+            <select v-model="pick[h.id]" @change="trial(h)">
               <option disabled value="">新终点</option>
               <option v-for="s in stations" :key="s.code" :value="s.code">{{ s.name }}</option>
             </select>
             <button :disabled="busy" @click="reroute(h)">重寻路</button>
+            <div v-if="preview[h.id]" class="muted">
+              <template v-if="preview[h.id].reachable">
+                新途经 {{ preview[h.id].path.join(' → ') }} · 新票价 ¥{{ preview[h.id].fare }}
+              </template>
+              <template v-else>按现行线网不可达</template>
+            </div>
           </template>
           <span v-else class="muted">不可达</span>
         </td>

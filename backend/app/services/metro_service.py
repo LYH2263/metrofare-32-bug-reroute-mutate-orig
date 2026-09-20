@@ -82,28 +82,16 @@ class MetroService:
         result = quote_route(edges, start, end, rules)
         if not result["reachable"]:
             raise ValueError(f"新终点 {end} 按现行线网不可达")
-        payload["end"] = end
-        prev["end"] = end
-        prev["path"] = result.get("path")
-        prev["hops"] = result.get("hops")
-        prev["fare"] = result.get("fare")
-        runs_repo.update_payload_result(self._conn, row["id"], payload, prev)
-        result["reroute_of"] = None
+        # 原记录保持不动；站数/票价按新终点现算，新记录引用直接前驱 run_id。
+        # 所有拒绝都发生在上面，此处只有一次插入，失败不会留下半截记录。
+        result["reroute_of"] = run_id
         new_id = runs_repo.insert(
             self._conn,
             "quote",
-            {"start": start, "end": end, "reroute_of": None},
+            {"start": start, "end": end, "reroute_of": run_id},
             result,
         )
-        stored = dict(result)
-        stored["reroute_of"] = new_id
-        runs_repo.update_payload_result(
-            self._conn,
-            new_id,
-            {"start": start, "end": end, "reroute_of": new_id},
-            stored,
-        )
-        return {"run_id": new_id, "reroute_of": new_id, **stored}
+        return {"run_id": new_id, "reroute_of": run_id, **result}
 
     def history(self, limit=50):
         return [_to_item(r) for r in runs_repo.list_recent(self._conn, limit)]
