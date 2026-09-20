@@ -59,7 +59,9 @@ class MetroService:
     def reroute(self, run_id: int, new_end: str):
         """Re-quote a persisted reachable run with a new destination on the current network.
 
-        The original record is never modified; a new quote record referencing it is written.
+        The source record is never modified: on success exactly one new quote record
+        is inserted, referencing the record it was changed from. All validation runs
+        before the insert, so a rejection leaves the table unchanged.
         Raises LookupError if the run does not exist, ValueError on any rejected change.
         """
         row = runs_repo.get(self._conn, run_id)
@@ -82,28 +84,10 @@ class MetroService:
         result = quote_route(edges, start, end, rules)
         if not result["reachable"]:
             raise ValueError(f"新终点 {end} 按现行线网不可达")
-        payload["end"] = end
-        prev["end"] = end
-        prev["path"] = result.get("path")
-        prev["hops"] = result.get("hops")
-        prev["fare"] = result.get("fare")
-        runs_repo.update_payload_result(self._conn, row["id"], payload, prev)
-        result["reroute_of"] = None
-        new_id = runs_repo.insert(
-            self._conn,
-            "quote",
-            {"start": start, "end": end, "reroute_of": None},
-            result,
-        )
-        stored = dict(result)
-        stored["reroute_of"] = new_id
-        runs_repo.update_payload_result(
-            self._conn,
-            new_id,
-            {"start": start, "end": end, "reroute_of": new_id},
-            stored,
-        )
-        return {"run_id": new_id, "reroute_of": new_id, **stored}
+        new_payload = {"start": start, "end": end, "reroute_of": run_id}
+        new_result = {**result, "reroute_of": run_id}
+        new_id = runs_repo.insert(self._conn, "quote", new_payload, new_result)
+        return {"run_id": new_id, "reroute_of": run_id, **new_result}
 
     def history(self, limit=50):
         return [_to_item(r) for r in runs_repo.list_recent(self._conn, limit)]

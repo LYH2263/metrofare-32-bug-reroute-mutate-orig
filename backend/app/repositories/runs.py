@@ -13,14 +13,6 @@ def insert(conn: sqlite3.Connection, kind: str, payload: dict, result: dict) -> 
     return int(cur.lastrowid)
 
 
-def update_payload_result(conn: sqlite3.Connection, run_id: int, payload: dict, result: dict) -> None:
-    conn.execute(
-        "UPDATE calc_runs SET input_json=?, result_json=? WHERE id=?",
-        (json.dumps(payload, ensure_ascii=False), json.dumps(result, ensure_ascii=False), run_id),
-    )
-    conn.commit()
-
-
 def get(conn: sqlite3.Connection, run_id: int) -> dict | None:
     row = conn.execute("SELECT * FROM calc_runs WHERE id=?", (run_id,)).fetchone()
     return dict(row) if row else None
